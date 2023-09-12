@@ -276,12 +276,14 @@ test_pipeline = [
         'ego2global_rotation', 'img_shape', 'scene_name'))
 ]
 
+data_root = './data/nuscenes'
+ann_root = './data/nuscenes_cam/'
 # configs for evaluation code
 # DO NOT CHANGE
 eval_config = dict(
     type='NuscDataset',
-    data_root='./datasets/nuScenes',
-    ann_file='./datasets/nuScenes/nuscenes_map_infos_val_newsplit.pkl',
+    data_root=data_root,
+    ann_file=ann_root+'nuscenes_map_infos_val_newsplit.pkl',
     meta=meta,
     roi_size=roi_size,
     cat2id=cat2id,
@@ -305,8 +307,8 @@ data = dict(
     workers_per_gpu=4,
     train=dict(
         type='NuscDataset',
-        data_root='./datasets/nuScenes',
-        ann_file='./datasets/nuScenes/nuscenes_map_infos_train_newsplit.pkl',
+        data_root=data_root,
+        ann_file=ann_root+'nuscenes_map_infos_train_newsplit.pkl',
         meta=meta,
         roi_size=roi_size,
         cat2id=cat2id,
@@ -315,8 +317,8 @@ data = dict(
     ),
     val=dict(
         type='NuscDataset',
-        data_root='./datasets/nuScenes',
-        ann_file='./datasets/nuScenes/nuscenes_map_infos_val_newsplit.pkl',
+        data_root=data_root,
+        ann_file=ann_root+'nuscenes_map_infos_val_newsplit.pkl',
         meta=meta,
         roi_size=roi_size,
         cat2id=cat2id,
@@ -327,8 +329,8 @@ data = dict(
     ),
     test=dict(
         type='NuscDataset',
-        data_root='./datasets/nuScenes',
-        ann_file='./datasets/nuScenes/nuscenes_map_infos_val_newsplit.pkl',
+        data_root=data_root,
+        ann_file=ann_root+'nuscenes_map_infos_val_newsplit.pkl',
         meta=meta,
         roi_size=roi_size,
         cat2id=cat2id,

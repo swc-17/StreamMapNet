@@ -1,0 +1,1 @@
+python tools/data_converter/nuscenes_converter.py --data-root ./data/nuscenes --newsplit
