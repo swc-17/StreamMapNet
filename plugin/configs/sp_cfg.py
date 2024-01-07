@@ -20,10 +20,10 @@ img_size = (img_h, img_w)
 num_gpus = 8
 batch_size = 4
 num_iters_per_epoch = 27846 // (num_gpus * batch_size)
-num_epochs = 30
+num_epochs = 24
 total_iters = num_iters_per_epoch * num_epochs
 
-num_queries = 100
+num_queries = 50
 
 # category configs
 cat2id = {
@@ -56,7 +56,7 @@ meta = dict(
 
 # model configs
 bev_embed_dims = 256
-embed_dims = 512
+embed_dims = 256
 num_feat_levels = 3
 norm_cfg = dict(type='BN2d')
 num_class = max(list(cat2id.values()))+1
@@ -142,7 +142,7 @@ model = dict(
         num_queries=num_queries,
         embed_dims=embed_dims,
         num_classes=num_class,
-        in_channels=embed_dims//2,
+        in_channels=embed_dims,
         num_points=num_points,
         roi_size=roi_size,
         coord_dim=2,
@@ -296,7 +296,6 @@ data = dict(
         type='NuscDataset',
         data_root=data_root,
         ann_file=ann_root+'nuscenes_map_infos_train.pkl',
-        map_ann_file='tmp_gts_nusc_60x30_train.pkl',
         meta=meta,
         roi_size=roi_size,
         cat2id=cat2id,
@@ -352,9 +351,9 @@ lr_config = dict(
     warmup_ratio=1.0 / 3,
     min_lr_ratio=3e-3)
 
-evaluation = dict(interval=num_epochs//6*num_iters_per_epoch)
+evaluation = dict(interval=6*num_iters_per_epoch)
 find_unused_parameters = True #### when use checkpoint, find_unused_parameters must be False
-checkpoint_config = dict(interval=num_epochs//6*num_iters_per_epoch)
+checkpoint_config = dict(interval=num_iters_per_epoch)
 
 runner = dict(
     type='IterBasedRunner', max_iters=num_epochs * num_iters_per_epoch)

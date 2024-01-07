@@ -232,6 +232,7 @@ def main():
     cfg.data.train.work_dir = cfg.work_dir
     cfg.data.val.work_dir = cfg.work_dir
     datasets = [build_dataset(cfg.data.train)]
+    data = datasets[0].__getitem__(3)
     if len(cfg.workflow) == 2:
         val_dataset = copy.deepcopy(cfg.data.val)
         # in case we use a dataset wrapper
@@ -269,4 +270,7 @@ def main():
 
 
 if __name__ == '__main__':
+    torch.multiprocessing.set_start_method(
+        "fork"
+    )  # use fork workers_per_gpu can be > 1
     main()

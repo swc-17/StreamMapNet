@@ -63,21 +63,28 @@ num_class = max(list(cat2id.values()))+1
 num_points = 20
 permute = True
 
+
+## sparse4d model
+task_config = dict(
+    with_det = False,
+    with_map = True,
+    with_motion = False,
+)
+num_vector = 100
+num_sample = 20
+num_single_frame_decoder = 0
+num_decoder = 6
+drop_out = 0.1
+embed_dims = 256
+num_groups = 8
+num_levels = 3
 model = dict(
-    type='StreamMapNet',
-    roi_size=roi_size,
-    bev_h=bev_h,
-    bev_w=bev_w,
-    backbone_cfg=dict(
-        type='BEVFormerBackbone',
-        roi_size=roi_size,
-        bev_h=bev_h,
-        bev_w=bev_w,
-        use_grid_mask=True,
+    type="Sparse4D",
+    use_grid_mask=True,
+    use_deformable_func=True,
         img_backbone=dict(
             type='ResNet',
             with_cp=False,
-            # pretrained='./resnet50_checkpoint.pth',
             pretrained='open-mmlab://detectron2/resnet50_caffe',
             depth=50,
             num_stages=4,
@@ -87,152 +94,147 @@ model = dict(
             norm_eval=True,
             style='caffe',
             dcn=dict(type='DCNv2', deform_groups=1, fallback_on_stride=False),
-            stage_with_dcn=(False, False, True, True)),
+            stage_with_dcn=(False, False, True, True)
+        ),
         img_neck=dict(
             type='FPN',
             in_channels=[512, 1024, 2048],
-            out_channels=bev_embed_dims,
+            out_channels=256,
             start_level=0,
             add_extra_convs=True,
-            num_outs=num_feat_levels,
+            num_outs=3,
             norm_cfg=norm_cfg,
-            relu_before_extra_convs=True),
-        transformer=dict(
-            type='PerceptionTransformer',
-            embed_dims=bev_embed_dims,
-            encoder=dict(
-                type='BEVFormerEncoder',
-                num_layers=1,
-                pc_range=pc_range,
-                num_points_in_pillar=4,
-                return_intermediate=False,
-                transformerlayers=dict(
-                    type='BEVFormerLayer',
-                    attn_cfgs=[
-                        dict(
-                            type='TemporalSelfAttention',
-                            embed_dims=bev_embed_dims,
-                            num_levels=1),
-                        dict(
-                            type='SpatialCrossAttention',
-                            deformable_attention=dict(
-                                type='MSDeformableAttention3D',
-                                embed_dims=bev_embed_dims,
-                                num_points=8,
-                                num_levels=num_feat_levels),
-                            embed_dims=bev_embed_dims,
-                        )
-                    ],
-                    feedforward_channels=bev_embed_dims*2,
-                    ffn_dropout=0.1,
-                    operation_order=('self_attn', 'norm', 'cross_attn', 'norm',
-                                    'ffn', 'norm')
-                )
-            ),
+            relu_before_extra_convs=True
         ),
-        positional_encoding=dict(
-            type='LearnedPositionalEncoding',
-            num_feats=bev_embed_dims//2,
-            row_num_embed=bev_h,
-            col_num_embed=bev_w,
-            ),
-    ),
-    head_cfg=dict(
-        type='MapDetectorHead',
-        num_queries=num_queries,
-        embed_dims=embed_dims,
-        num_classes=num_class,
-        in_channels=embed_dims//2,
-        num_points=num_points,
-        roi_size=roi_size,
-        coord_dim=2,
-        different_heads=False,
-        predict_refine=False,
-        sync_cls_avg_factor=True,
-        streaming_cfg=dict(),
-        transformer=dict(
-            type='MapTransformer',
-            num_feature_levels=1,
-            num_points=num_points,
-            coord_dim=2,
-            encoder=dict(
-                type='PlaceHolderEncoder',
+    head=dict(
+        type="Sparse4DHead",
+        task_config=task_config,
+        map_head=dict(
+            type="Sparse4DMapHead",
+            cls_threshold_to_reg=0.05,
+            instance_bank=dict(
+                type="InstanceBank",
+                num_anchor=100,
                 embed_dims=embed_dims,
+                anchor="kmeans_map_100.npy",
+                anchor_handler=dict(type="SparsePoint3DKeyPointsGenerator"),
+                num_temp_instances=0,
+                confidence_decay=0.6,
+                feat_grad=True,
             ),
-            decoder=dict(
-                type='MapTransformerDecoder_new',
-                num_layers=6,
-                return_intermediate=True,
-                transformerlayers=dict(
-                    type='MapTransformerLayer',
-                    attn_cfgs=[
-                        dict(
-                            type='MultiheadAttention',
-                            embed_dims=embed_dims,
-                            num_heads=8,
-                            attn_drop=0.1,
-                            proj_drop=0.1,
-                        ),
-                        dict(
-                            type='CustomMSDeformableAttention',
-                            embed_dims=embed_dims,
-                            num_heads=8,
-                            num_levels=1,
-                            num_points=num_points,
-                            dropout=0.1,
-                        ),
-                    ],
-                    ffn_cfgs=dict(
-                        type='FFN',
-                        embed_dims=embed_dims,
-                        feedforward_channels=embed_dims*2,
-                        num_fcs=2,
-                        ffn_drop=0.1,
-                        act_cfg=dict(type='ReLU', inplace=True),        
-                    ),
-                    feedforward_channels=embed_dims*2,
-                    ffn_dropout=0.1,
-                    # operation_order=('norm', 'self_attn', 'norm', 'cross_attn',
-                    #                 'norm', 'ffn',)
-                    operation_order=('self_attn', 'norm', 'cross_attn', 'norm',
-                                    'ffn', 'norm')
-                )
-            )
-        ),
-        loss_cls=dict(
-            type='FocalLoss',
-            use_sigmoid=True,
-            gamma=2.0,
-            alpha=0.25,
-            loss_weight=4.0
-        ),
-        loss_reg=dict(
-            type='LinesL1Loss',
-            loss_weight=50.0,
-            beta=0.01,
-        ),
-        assigner=dict(
-            type='HungarianLinesAssigner',
-                cost=dict(
-                    type='MapQueriesCost',
-                    cls_cost=dict(type='FocalLossCost', weight=4.0),
-                    reg_cost=dict(type='LinesL1Cost', weight=50.0, beta=0.01, permute=permute),
+            anchor_encoder=dict(
+                type="SparsePoint3DEncoder",
+                embed_dims=embed_dims,
+                num_sample=num_sample,
+            ),
+            num_single_frame_decoder=num_single_frame_decoder,
+            operation_order=[
+                "deformable",
+                "ffn",
+                "norm",
+                "refine",
+            ] * num_single_frame_decoder + [
+                "temp_gnn",
+                "gnn",
+                "norm",
+                "deformable",
+                "ffn",
+                "norm",
+                "refine",
+            ] * (num_decoder - num_single_frame_decoder),
+            temp_graph_model=dict(
+                type="MultiheadFlashAttention",
+                embed_dims=embed_dims,
+                num_heads=num_groups,
+                batch_first=True,
+                dropout=drop_out,
+            ),
+            graph_model=dict(
+                type="MultiheadFlashAttention",
+                embed_dims=embed_dims,
+                num_heads=num_groups,
+                batch_first=True,
+                dropout=drop_out,
+            ),
+            norm_layer=dict(type="LN", normalized_shape=embed_dims),
+            ffn=dict(
+                type="AsymmetricFFN",
+                in_channels=embed_dims * 2,
+                pre_norm=dict(type="LN"),
+                embed_dims=embed_dims,
+                feedforward_channels=embed_dims * 4,
+                num_fcs=2,
+                ffn_drop=drop_out,
+                act_cfg=dict(type="ReLU", inplace=True),
+            ),
+            deformable_model=dict(
+                type="DeformableFeatureAggregation",
+                embed_dims=embed_dims,
+                num_groups=num_groups,
+                num_levels=num_levels,
+                num_cams=6,
+                attn_drop=0.15,
+                use_deformable_func=True,
+                use_camera_embed=True,
+                residual_mode="cat",
+                kps_generator=dict(
+                    type="SparsePoint3DKeyPointsGenerator",
+                    embed_dims=embed_dims,
+                    num_sample=num_sample,
+                    num_learnable_pts=3,
+                    fix_height=(0, 0.5, -0.5, 1, -1),
+                    ground_height=0, # ground height in lidar frame
+                ),
+            ),
+            refine_layer=dict(
+                type="SparsePoint3DRefinementModule",
+                embed_dims=embed_dims,
+                num_sample=num_sample,
+                num_cls=3,
+            ),
+            sampler=dict(
+                type="SparsePoint3DTarget",
+                assigner=dict(
+                    type='HungarianLinesAssigner_v2',
+                    cost=dict(
+                        type='MapQueriesCost',
+                        cls_cost=dict(type='FocalLossCost', weight=4.0),
+                        reg_cost=dict(type='LinesL1Cost', weight=50.0, beta=0.01, permute=True),
                     ),
                 ),
+            ),
+            loss_cls=dict(
+                type="FocalLoss",
+                use_sigmoid=True,
+                gamma=2.0,
+                alpha=0.25,
+                loss_weight=4.0,
+            ),
+            loss_reg=dict(
+                type='LinesL1Loss',
+                loss_weight=50.0,
+                beta=0.01,
+            ),
+            gt_cls_key="gt_map_labels",
+            gt_reg_key="gt_map_pts",
+            decoder=dict(type="SparsePoint3DDecoder"),
+            reg_weights=[1.0] * 40,
+            roi_size=roi_size,
+            num_sample=num_sample,
         ),
-    streaming_cfg=dict(),
-    model_name='SingleStage'
+    ),
 )
 
 # data processing pipelines
 train_pipeline = [
     dict(
-        type='VectorizeMap',
+        type='VectorizeMap_v2',
         coords_dim=coords_dim,
         roi_size=roi_size,
         sample_num=num_points,
         normalize=True,
         permute=permute,
+        
     ),
     dict(type='LoadMultiViewImagesFromFiles', to_float32=True),
     dict(type='PhotoMetricDistortionMultiViewImage'),
@@ -242,10 +244,23 @@ train_pipeline = [
          ),
     dict(type='Normalize3D', **img_norm_cfg),
     dict(type='PadMultiViewImages', size_divisor=32),
-    dict(type='FormatBundleMap'),
-    dict(type='Collect3D', keys=['img', 'vectors'], meta_keys=(
+    dict(type='CustomFormatBundle3D'),
+    dict(type="NuScenesSparse4DAdaptor"),
+    dict(
+        type='Collect3D', 
+        keys=[            
+            "img",
+            "timestamp",
+            "projection_mat",
+            "image_wh",
+            'gt_map_labels', 
+            'gt_map_pts',
+        ], 
+        meta_keys=(
         'token', 'ego2img', 'sample_idx', 'ego2global_translation',
-        'ego2global_rotation', 'img_shape', 'scene_name'))
+        'ego2global_rotation', 'img_shape', 'scene_name', "T_global", "T_global_inv", "timestamp"
+        ),
+    ),
 ]
 
 # data processing pipelines
@@ -257,10 +272,18 @@ test_pipeline = [
          ),
     dict(type='Normalize3D', **img_norm_cfg),
     dict(type='PadMultiViewImages', size_divisor=32),
-    dict(type='FormatBundleMap'),
-    dict(type='Collect3D', keys=['img'], meta_keys=(
+    dict(type='CustomFormatBundle3D'),
+    dict(type="NuScenesSparse4DAdaptor"),
+    dict(type='Collect3D', 
+        keys=[
+            "img",
+            "timestamp",
+            "projection_mat",
+            "image_wh",
+        ],
+        meta_keys=(
         'token', 'ego2img', 'sample_idx', 'ego2global_translation',
-        'ego2global_rotation', 'img_shape', 'scene_name'))
+        'ego2global_rotation', 'img_shape', 'scene_name', "T_global", "T_global_inv", "timestamp"))
 ]
 
 # configs for evaluation code
@@ -282,8 +305,8 @@ eval_config = dict(
             normalize=False,
             roi_size=roi_size
         ),
-        dict(type='FormatBundleMap'),
-        dict(type='Collect3D', keys=['vectors'], meta_keys=['token'])
+        dict(type='CustomFormatBundle3D'),
+        dict(type='Collect3D', keys=['vectors'], meta_keys=['token', 'timestamp'])
     ],
     interval=1,
 )
